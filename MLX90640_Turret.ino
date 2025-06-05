@@ -1,5 +1,4 @@
 #include <Adafruit_MLX90640.h>
-#include <AccelStepper.h>
 #include <FastAccelStepper.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -20,10 +19,12 @@
 #define DIR_PIN_Y 18
 
 #define FIRE_PIN 13
+#define LED_PIN 2
 
 // MLX90640 settings:
 const int cameraPixelsX = 32, cameraPixelsY = 24;
 const float cameraFOV = 55.0;
+const int startupGracePeriod = 1000; // In milliseconds
 
 const float minDetectionTemp = 30.0; // In degrees celcius
 const float maxDetectionTemp = 200.0; // In degrees celcius
@@ -33,36 +34,36 @@ const int wanderSpeed = 10;
 
 // Stepper motor settings:
 const float stepAngle = 1.8;
-const int microstep = 16;
+const int microstep = 32;
 
 const bool enablePan = true;
 const bool enableTilt = true;
 
 const float maxSpeedX = 2000;
-const float maxAccelX = 10000;
+const float maxAccelX = 20000;
 const int ratioX = -3;
 const float maxSpeedY = 2000;
-const float maxAccelY = 10000;
+const float maxAccelY = 20000;
 const int ratioY = 1;
 
 // PID controller parameters: (DO NOT CHANGE UNLESS YOU KNOW WHAT YOU ARE DOING)
-const float constX = 100;
-const float constY = 100;
-const float Kp_X = 1.0, Ki_X = 0.01, Kd_X = 2000;
-const float Kp_Y = 1.0, Ki_Y = 0.01, Kd_Y = 6000;
-const float intConstraintX = 20;
-const float intConstraintY = 20;
+const float constX = 100.0;
+const float constY = 100.0;
+const float Kp_X = 1.0, Ki_X = 0.0, Kd_X = 2000.0;
+const float Kp_Y = 1.0, Ki_Y = 0.0, Kd_Y = 4000.0;
+const float intConstraintX = 20.0;
+const float intConstraintY = 20.0;
 const float deadzoneX = 1.8;
 const float deadzoneY = 1.8;
 
 // Firing settings:
-const bool enableFiring = false;
+const bool enableFiring = true;
 const int firingBoxSize = 2;
 const float minFiringTemp = 30.0; // In degrees celcius
 const float maxFiringTemp = 200.0; // In degrees celcius
 
 // Debug options:
-const bool sendCameraFeedback = true;
+const bool sendCameraFeedback = false;
 const bool sendMotorFeedback = false;
 const bool sendGunFeedback = false;
 
@@ -166,13 +167,36 @@ void loop() {vTaskDelay(portMAX_DELAY);}
 
 
 void mlxTask(void *param) {
+  unsigned long startTime = millis();
+
+  do {
+    digitalWrite(FIRE_PIN, LOW);
+    digitalWrite(LED_PIN, LOW);
+
+    if (xSemaphoreTake(targetMutex, portMAX_DELAY)) {
+      target = {0, 0, 0, 0, false};
+      xSemaphoreGive(targetMutex);
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(1));
+  } while (millis() - startTime < startupGracePeriod);
+
   for (;;) {
     Target newTarget = getAveragePos();
-    if (enableFiring) {fireTurret(frame);}
+
+    if (newTarget.valid && enableFiring) {
+      fireTurret(frame);
+    }
+    else {
+      digitalWrite(FIRE_PIN, LOW);
+      digitalWrite(LED_PIN, LOW);
+    }
+
     if (xSemaphoreTake(targetMutex, portMAX_DELAY)) {
       target = newTarget;
       xSemaphoreGive(targetMutex);
     }
+
     vTaskDelay(pdMS_TO_TICKS(1));
   }
 }
@@ -263,14 +287,17 @@ Target getAveragePos() {
     if (sendCameraFeedback) {
       Serial.printf("Heat centroid: (%.2f, %.2f), Heat dimensions: (%d, %d), Max Temp: %.2f°C\n", pos.x, pos.y, pos.w, pos.h, maxTemp);
     }
+
     return pos;
   }
   else if (continueTrackingLostTarget > 0 && missedFrameCount != continueTrackingLostTarget && lastValidPos.valid) {
     if (missedFrameCount < continueTrackingLostTarget) {
       missedFrameCount++;
+
       if (sendCameraFeedback) {
         Serial.printf("Target lost, (%d/%d)\n", missedFrameCount, continueTrackingLostTarget);
       }
+
       lastValidPos.y = centerY;
       return lastValidPos;
     }
@@ -281,6 +308,7 @@ Target getAveragePos() {
   else if (sendCameraFeedback) {
     Serial.println("No hot pixels in detection range.");
   }
+
   return pos;
 }
 
@@ -362,14 +390,16 @@ void fireTurret(float* frame) {
       float temp = frame[y * cameraPixelsX + x];
       if (temp >= minFiringTemp && temp <= maxFiringTemp) {
         digitalWrite(FIRE_PIN, HIGH);
-        digitalWrite(2, HIGH);
+        digitalWrite(LED_PIN, HIGH);
         if (sendGunFeedback) {Serial.printf("Turret Firing\n");}
         return;
       }
     }
   }
+
   digitalWrite(FIRE_PIN, LOW);
-  digitalWrite(2, LOW);
+  digitalWrite(LED_PIN, LOW);
+
   if (sendGunFeedback) {Serial.printf("Turret Stopping\n");}
 }
 
