@@ -1,3 +1,10 @@
+// ESP32 Thermal Tracking Turret  
+// - Uses MLX90640 thermal camera to detect heat signatures  
+// - Controls two stepper motors (pan/tilt) with PID for smooth aiming  
+// - Separates camera processing and motor control onto separate cores for efficiency  
+// - Fires when a valid heat target is detected within a defined area
+
+
 #include <Adafruit_MLX90640.h>
 #include <FastAccelStepper.h>
 #include <freertos/FreeRTOS.h>
@@ -46,7 +53,7 @@ const float maxSpeedY = 2000;
 const float maxAccelY = 20000;
 const int ratioY = 1;
 
-// PID controller parameters: (DO NOT CHANGE UNLESS YOU KNOW WHAT YOU ARE DOING)
+// PID controller parameters:
 const float constX = 100.0;
 const float constY = 100.0;
 const float Kp_X = 1.0, Ki_X = 0.0, Kd_X = 2000.0;
@@ -70,7 +77,7 @@ const bool sendGunFeedback = false;
 
 // --- BEGIN CODE --- //
 
-struct Target {
+struct Target { // Create Target struct: x and y position, w and h dimensions, and validity of target
   float x;
   float y;
   int w;
@@ -85,17 +92,17 @@ void motorTask(void *param);
 Target getAveragePos();
 void fireTurret(float* frame);
 
-
+// Mutex ensures safe access to the 'target' data structure between tasks on seperate cores
 SemaphoreHandle_t targetMutex;
 TaskHandle_t mlxTaskHandle;
 TaskHandle_t motorTaskHandle;
 
-
+// Initiate MLX90640
 TwoWire I2CBus = TwoWire(0);
 Adafruit_MLX90640 mlx;
 float frame[cameraPixelsX * cameraPixelsY];
 
-
+// Initiate stepper motors
 FastAccelStepperEngine engine = FastAccelStepperEngine();
 FastAccelStepper *stepperX = NULL;
 FastAccelStepper *stepperY = NULL;
@@ -114,7 +121,7 @@ void setup() {
   Serial.begin(921600);
   I2CBus.begin(I2C_SDA, I2C_SCL, 400000);
 
-  if (!mlx.begin(MLX90640_I2CADDR_DEFAULT, &I2CBus)) {
+  if (!mlx.begin(MLX90640_I2CADDR_DEFAULT, &I2CBus)) { // Find MLX90640 on I2C Bus
     Serial.println("MLX90640 not found!");
     while (1) delay(10);
   }
@@ -122,7 +129,7 @@ void setup() {
 
   mlx.setMode(MLX90640_CHESS);
   mlx.setResolution(MLX90640_ADC_18BIT);
-  mlx.setRefreshRate(MLX90640_16_HZ);
+  mlx.setRefreshRate(MLX90640_16_HZ); // Set MLX90640's refresh rate to 16HZ (maximum possible refresh rate on the given hardware)
 
   engine.init();
 
@@ -153,6 +160,7 @@ void setup() {
   pinMode(FIRE_PIN, OUTPUT);
   pinMode(2, OUTPUT);
 
+  // Seperate MLX and motor tasks on different cores
   targetMutex = xSemaphoreCreateMutex();
   xTaskCreatePinnedToCore(
     mlxTask, "MLX90640Task", 8192, NULL, 2, &mlxTaskHandle, 1
@@ -166,10 +174,12 @@ void setup() {
 void loop() {vTaskDelay(portMAX_DELAY);}
 
 
+// Handles MLX90640's thermal camera data capture
+// Runs on Core 1 at defined refresh rate to avoid bottlenecking the motor task's speed
 void mlxTask(void *param) {
   unsigned long startTime = millis();
 
-  do {
+  do { // Do not find target during grace period
     digitalWrite(FIRE_PIN, LOW);
     digitalWrite(LED_PIN, LOW);
 
@@ -181,10 +191,10 @@ void mlxTask(void *param) {
     vTaskDelay(pdMS_TO_TICKS(1));
   } while (millis() - startTime < startupGracePeriod);
 
-  for (;;) {
-    Target newTarget = getAveragePos();
+  for (;;) { // Loop indefinitely on core 1 (when grace period ends)
+    Target newTarget = getAveragePos(); // Find a target
 
-    if (newTarget.valid && enableFiring) {
+    if (newTarget.valid && enableFiring) { // Check validity of target
       fireTurret(frame);
     }
     else {
@@ -202,14 +212,16 @@ void mlxTask(void *param) {
 }
 
 
+// Handles stepper motor control and PID tracking
+// Runs on Core 0 to loop as fast as possible on the given hardware
 void motorTask(void *param) {
-  for (;;) {
+  for (;;) { // Loop indefinitely
     if (xSemaphoreTake(targetMutex, portMAX_DELAY)) {
-      if (target.valid) {
+      if (target.valid) { // Check validity of target
         if (enableTilt) {digitalWrite(ENA_PIN_Y, LOW);}
-        PIDController(target.x, target.y, target.w, target.h);
+        PIDController(target.x, target.y, target.w, target.h); // Move turret to target's position
       }
-      else {
+      else { // If target is not valid, try to find a new target
         if (turretWandering) {
           digitalWrite(ENA_PIN_Y, HIGH);
           stepperX->setSpeedInHz(fabs(wanderSpeed * microstep * ratioX));
@@ -232,6 +244,8 @@ void motorTask(void *param) {
 }
 
 
+// Loops through all pixels in the MLX90640's image array
+// Calculates weighted centroid of hot spots to determine target position and dimensions
 Target getAveragePos() {
   Target pos = {0, 0, 0, 0, false};
   static Target lastValidPos = {0, 0, 0, 0, false};
@@ -251,21 +265,24 @@ Target getAveragePos() {
   int minX = cameraPixelsX, maxX = 0;
   int minY = cameraPixelsY, maxY = 0;
 
+  // Loop through MLX90640's pixel array
   for (int y = 0; y < cameraPixelsY; ++y) {
     for (int x = 0; x < cameraPixelsX; ++x) {
       int index = y * cameraPixelsX + x;
       float temp = frame[index];
 
-      if (temp > maxTemp) {
+      if (temp > maxTemp) { // Record the maximum detected temperature on the array
         maxTemp = temp;
       }
 
-      if ((temp >= minDetectionTemp) && (temp <= maxDetectionTemp)) {
+      if ((temp >= minDetectionTemp) && (temp <= maxDetectionTemp)) { // Cheeck if pixel's temperature is within the detection range
+        // Find the average position of the target's heat accross all pixels
         weightedX += x * temp;
         weightedY += y * temp;
         totalWeight += temp;
         hotPixelCount++;
 
+        // Estimate target's dimensions
         if (x < minX) {minX = x;}
         if (x > maxX) {maxX = x;}
         if (y < minY) {minY = y;}
@@ -279,7 +296,7 @@ Target getAveragePos() {
     pos.y = weightedY / totalWeight;
     pos.w = maxX - minX + 1;
     pos.h = maxY - minY + 1;
-    pos.valid = true;
+    pos.valid = true; // Target is only valid if there is at least 1 pixel within the temperature detection range
 
     lastValidPos = pos;
     missedFrameCount = 0;
@@ -290,7 +307,7 @@ Target getAveragePos() {
 
     return pos;
   }
-  else if (continueTrackingLostTarget > 0 && missedFrameCount != continueTrackingLostTarget && lastValidPos.valid) {
+  else if (continueTrackingLostTarget > 0 && missedFrameCount != continueTrackingLostTarget && lastValidPos.valid) { // If current target is invalid and last target was valid, search for the lost target
     if (missedFrameCount < continueTrackingLostTarget) {
       missedFrameCount++;
 
@@ -313,6 +330,8 @@ Target getAveragePos() {
 }
 
 
+// PID control logic to smoothly move turret towards detected target position
+// Uses proportional, integral, and derivative terms to minimize overshooting / undershooting
 void PIDController(float x, float y, float w, float h) {
   static float prevErrorX = 0;
   static float prevErrorY = 0;
@@ -329,6 +348,7 @@ void PIDController(float x, float y, float w, float h) {
   integralX = constrain(integralX, 0, intConstraintX);
   integralY = constrain(integralY, 0, intConstraintY);
 
+  // PID controller algorithm
   float outputX = (Kp_X * errorX + Ki_X * integralX + Kd_X * derivativeX) * ratioX * constX;
   float outputY = (Kp_Y * errorY + Ki_Y * integralY + Kd_Y * derivativeY) * ratioY * constY;
 
@@ -337,15 +357,16 @@ void PIDController(float x, float y, float w, float h) {
 
   float speedX = mapFloat(fabs(outputX), 0, maxOutputX, 0, maxSpeedX * microstep);
   float speedY = mapFloat(fabs(outputY), 0, maxOutputY, 0, maxSpeedY * microstep);
+  // Estimate target's distance based on the 2D dimensions on MLX array
   float widthFactor = mapFloat(w, 0, cameraPixelsX, 0, 1);
   float heightFactor = mapFloat(h, 0, cameraPixelsY, 0, 1);
 
   if (stepperX) {
-    if (fabs(errorX) * (cameraFOV / cameraPixelsX) * 2 < deadzoneX * fabs(ratioX) * widthFactor) {
+    if (fabs(errorX) * (cameraFOV / cameraPixelsX) * 2 < deadzoneX * fabs(ratioX) * widthFactor) { // If turret is already aimed at target given a certain deadzone, stop moving
       stepperX->stopMove();
       if (sendMotorFeedback) {Serial.printf("Moving Stopped\n");}
     }
-    else {
+    else { // Otherwise, move in accordance to the PID controller to track the target
       stepperX->setSpeedInHz(speedX);
       if (outputX < 0) {
         stepperX->runForward();
@@ -375,6 +396,7 @@ void PIDController(float x, float y, float w, float h) {
 }
 
 
+// Activates firing mechanism if target's heat signature is centered on the predefined firing area
 void fireTurret(float* frame) {
   int halfSize = firingBoxSize / 2;
 
@@ -386,9 +408,9 @@ void fireTurret(float* frame) {
 
   for (int y = startY; y < startY + firingBoxSize; y++) {
     for (int x = startX; x < startX + firingBoxSize; x++) {
-      if (x < 0 || x >= cameraPixelsX || y < 0 || y >= cameraPixelsY) {continue;}
+      if (x < 0 || x >= cameraPixelsX || y < 0 || y >= cameraPixelsY) {continue;} // If target is within the firing box, fire the turret
       float temp = frame[y * cameraPixelsX + x];
-      if (temp >= minFiringTemp && temp <= maxFiringTemp) {
+      if (temp >= minFiringTemp && temp <= maxFiringTemp) { // Verify target is within the temperature detection range
         digitalWrite(FIRE_PIN, HIGH);
         digitalWrite(LED_PIN, HIGH);
         if (sendGunFeedback) {Serial.printf("Turret Firing\n");}
@@ -405,6 +427,7 @@ void fireTurret(float* frame) {
 
 
 float mapFloat(float x, float in_min, float in_max, float out_min, float out_max) {
+  // Custom float version of Arduino's map() function; scales values proportionally to a given range, works with float values
   return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
 }
 
