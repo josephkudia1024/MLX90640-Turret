@@ -57,10 +57,10 @@ const bool enableTilt = true;
 
 const float maxSpeedX = 2000;
 const float maxAccelX = 20000;
-const int ratioX = -3;
+const int ratioX = -3; // Physical geared ratio of X stepper to turret
 const float maxSpeedY = 2000;
 const float maxAccelY = 20000;
-const int ratioY = 1;
+const int ratioY = 1; // Physical geared ratio of Y stepper to turret
 
 // PID controller parameters:
 const float constX = 100.0;
@@ -69,8 +69,8 @@ const float Kp_X = 1.0, Ki_X = 0.0, Kd_X = 2000.0;
 const float Kp_Y = 1.0, Ki_Y = 0.0, Kd_Y = 4000.0;
 const float intConstraintX = 20.0;
 const float intConstraintY = 20.0;
-const float deadzoneX = 1.8;
-const float deadzoneY = 1.8;
+const float deadzoneX = 1.8; // In degrees of rotation
+const float deadzoneY = 1.8; // In degrees of rotation
 
 // Firing settings:
 const bool enableFiring = true;
