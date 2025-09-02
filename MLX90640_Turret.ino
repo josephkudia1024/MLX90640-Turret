@@ -1,8 +1,17 @@
-// ESP32 Thermal Tracking Turret  
-// - Uses MLX90640 thermal camera to detect heat signatures  
-// - Controls two stepper motors (pan/tilt) with PID for smooth aiming  
-// - Separates camera processing and motor control onto separate cores for efficiency  
+// ********************************************************************************************************************
+//
+// --- ESP32 Thermal Tracking Turret ---
+//
+// Author: Joseph Kudia
+// Date Created: May 19, 2025
+// Description:
+// - Uses MLX90640 thermal camera to detect heat signatures
+// - Controls two stepper motors (pan/tilt) with PID for smooth aiming
+// - Separates camera processing and motor control onto separate cores for efficiency
 // - Fires when a valid heat target is detected within a defined area
+// - Created with custom parameters that enable this code to be generally applied to different turret setups / hardware
+//
+// ********************************************************************************************************************
 
 
 #include <Adafruit_MLX90640.h>
