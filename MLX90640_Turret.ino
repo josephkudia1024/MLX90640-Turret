@@ -1,3 +1,7 @@
+// Copyright (C) 2025 Joseph Kudia
+// This project is licensed under the GNU Affero General Public License v3.0.
+// See the LICENSE file for details.
+
 // ********************************************************************************************************************
 //
 // --- ESP32 Thermal Tracking Turret ---
