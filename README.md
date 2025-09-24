@@ -6,6 +6,15 @@ This repository contains the **firmware** powering the system, designed for port
 
 ---
 
+## 📂 Repository Contents
+
+- `src/` – Source code for ESP32 firmware  
+- `include/` – Configuration headers (PID tuning, thresholds, hardware setup)  
+- `docs/` – Parts list, assembly diagrams, schematics, and design notes  
+- `hardware/` – CAD models and reference design files
+
+---
+
 ## 🔧 Hardware Architecture
 
 - **Custom Structural Design**  
@@ -79,15 +88,6 @@ This repository contains the **firmware** powering the system, designed for port
 
 - **Blaster modification**:  
   - Overclocked from stock **7.4 V Li-Ion** pack → hardwired **9 V supply** for faster firing performance.  
-
----
-
-## 📂 Repository Contents
-
-- `src/` – Source code for ESP32 firmware  
-- `include/` – Configuration headers (PID tuning, thresholds, hardware setup)  
-- `docs/` – Parts list, assembly diagrams, schematics, and design notes  
-- `hardware/` – CAD models and reference design files
 
 ---
 
