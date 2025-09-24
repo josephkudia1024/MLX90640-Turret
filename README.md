@@ -86,8 +86,8 @@ This repository contains the **firmware** powering the system, designed for port
 
 - `src/` – Source code for ESP32 firmware  
 - `include/` – Configuration headers (PID tuning, thresholds, hardware setup)  
-- `docs/` – Supplemental diagrams, wiring schematics, and design notes  
-- `hardware/` – CAD models and reference design files for turret structure  
+- `docs/` – parts list, assembly diagrams, schematics, and design notes  
+- `hardware/` – CAD models and reference design files
 
 ---
 
