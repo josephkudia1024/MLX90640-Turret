@@ -9,7 +9,6 @@ This repository contains the **firmware** powering the system, designed for port
 ## 📂 Repository Contents
 
 - `src/` – Source code for ESP32 firmware  
-- `include/` – Configuration headers (PID tuning, thresholds, hardware setup)  
 - `docs/` – Parts list, assembly/wiring diagrams, schematics, and design notes  
 - `hardware/` – CAD models and reference design files
 
