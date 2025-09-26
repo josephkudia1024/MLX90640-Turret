@@ -288,7 +288,7 @@ Target getAveragePos() {
         maxTemp = temp;
       }
 
-      if ((temp >= minDetectionTemp) && (temp <= maxDetectionTemp)) { // Cheeck if pixel's temperature is within the detection range
+      if ((temp >= minDetectionTemp) && (temp <= maxDetectionTemp)) { // Check if pixel's temperature is within the detection range
         // Find the average position of the target's heat accross all pixels
         weightedX += x * temp;
         weightedY += y * temp;
