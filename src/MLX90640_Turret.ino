@@ -61,10 +61,10 @@ const bool enableTilt = true;
 
 const float maxSpeedX = 2000;
 const float maxAccelX = 20000;
-const int ratioX = -3; // Physical geared ratio of X stepper to turret
+const int ratioX = -3; // Physical geared ratio of X stepper to turret (ratioX : 1)
 const float maxSpeedY = 2000;
 const float maxAccelY = 20000;
-const int ratioY = 1; // Physical geared ratio of Y stepper to turret
+const int ratioY = 1; // Physical geared ratio of Y stepper to turret (ratioY : 1)
 
 // PID controller parameters:
 const float constX = 100.0;
